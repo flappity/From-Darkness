@@ -1,0 +1,114 @@
+import libtcodpy as libtcod
+import math
+import textwrap
+import shelve
+
+# Classes Go Here #
+
+# Tile class
+# This will be nothing but floors and walls. Doors, Stairs, Items, Monsters, Traps will all be entities
+# that exist on tiles
+class Tile:
+    def __init__(self, tile_x, tile_y, wall_or_floor, material='stone', explored=False)
+        self.tile_x = tile_x
+        self.tile_y = tile_y
+        self.material = material
+        self.wall_or_floor = wall_or_floor
+        if wall_or_floor == 'wall':
+            self.block_move = True
+        self.explored = explored
+
+    def carve_out(self):
+        self.wall_or_floor = 'floor'
+        self.block_move = False
+
+    def build_wall(self):
+        self.wall_or_floor = 'wall'
+        self.block_move = True
+
+# Room class: Creates a rectangular room. Either carves out a w*h area, or builds a w+2 x h+2 area
+# and carves out the middle.
+class Rectangle:
+    def __init__(self, map, x, y, width, height, x_dir=1, y_dir=1, connection=None):
+        self.map = map
+        self.x1 = x
+        self.y1 = y
+        self.x2 = x + (x_dir * width)
+        self.y2 = y + (y_dir * height)
+        self.x_dir = x_dir
+        self.y_dir = y_dir
+
+    # Using the x, y, w, h coordinates of the Rectangle object, carves the object into the given map.
+    def carve(self):
+        for x in range(self.x1, self.x2, self.x_dir):
+            for y in range(self.y1, self.y2, self.y_dir):
+                self.map.map_array[x][y].carve_out()
+    # Using the x, y, w, h coordinates of the Rectangle object, builds a rectangle one wider in each direction
+    # And then carves out the center - the inside room will have dimensions of width x height.
+    def build(self):
+        for x in range(self.x1 - self.x_dir, self.x2 + self.x_dir, self.x_dir):
+            for y in range (self.y1 - self.y_dir, self.y2 + self.y_dir, self.y_dir):
+                self.map.map_array[x][y].build_wall()
+        self.carve()
+
+# This carves out a hallway connecting x1, y1, x2, y2
+# Mostly used in underground dungeon carving
+class Basic_Hallway:
+    def __init__(self, map, x1, y1, x2, y2, turns=1):
+        self.map = map
+        self.x1 = x1
+        self.x2 = x2
+        self.y1 = y1
+        self.y2 = y2
+        self.turns = turns
+        self.x_start, self.x_end = min(x1, x2), max(x1, x2)
+        self.y_start, self.y_end =  min(y1, y2), max(y1, y2)
+        if x1 == x2 or y1 == y2:
+            for x in range(self.x1, self.x2 + 1):
+                for y in range(self.y1, self,y2 + 1):
+                    self.map.map_array[x][y].carve()
+        if self.turns == 1 and x1 != x2 or y1 != y2:
+            start_dir = libtcod.random_get_int(1, 1, 2)
+            # Start horizontally, go vertically
+            if start_dir == 1:
+                for x in range(self.x1, self.x2 + 1):
+                    self.map.map_array[x][self.y1].carve()
+                for y in range(self.y1, self.y2 + 1):
+                    self.map.map_array[self.x2 + 1][y].carve()
+
+
+
+# Class that contains objects containing the actual [x][y] map, map layout/theme, etc.
+# id = a unique identifier per map (I may not even need this)
+# name = 'The Caverns of Wrath' for example
+# map_layout = 'cave' 'town' 'dungeon' 'jail' etc etc. Determines the generation algorithm.
+# map_theme = some layouts can have alternate themes and whatnot. 'Elven town' or 'dwarven dungeon' etc
+# dimension_x and dimension_y are the width/height of the dungeon
+# dungeon_material was going to be for stone/wood/etc but will probably not happen, and be rolled into layout/theme
+# map_array = the actual map itself
+
+class Level_Map:
+    def __init__(self, id, name, map_layout, map_theme=None, dimension_x=80, dimension_y=40):
+        self.id = id
+        self.name = name
+        self.map_layout = map_layout
+        self.map_theme = map_theme
+        self.dimension_x = dimension_x
+        self.dimension_y = dimension_y
+        self.map_array = []
+        self.room_list = []
+
+    def carve_room(self, shape, x, y, w, h):
+        if shape == 'rectangle':
+            room = Rectangle(self, x, y, w, h)
+
+    # The main method for creating a map
+    def create_map(self, open=False):
+        for y in range(self.dimension_y):
+            for x in range(self.dimension_x):
+                if open:
+                    self.map_array[x][y] = Tile(x, y, 'floor', self.map_theme.base_material)
+                else:
+                    self.map_array[x][y] = Tile(x, y, 'wall', self.map_theme.base_material)
+
+
