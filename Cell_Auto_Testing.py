@@ -1,7 +1,8 @@
 import libtcodpy as libtcod
 import random
+import copy
 
-initial_chance = .5
+initial_chance = .4
 
 # Chance for a wall to remain a wall.
 # If there's between min_to_stay_alive and max_to_stay_alive walls around it, it stays alive. Otherwise it becomes a floor.
@@ -15,10 +16,10 @@ max_to_come_alive = 8
 
 # Alternate method of birth/death rates
 # If a floor has this many walls touching it, it becomes a wall.
-birth_limit = 1
+birth_limit = 4
 
 # If a wall doesn't have this many walls touching it, it becomes a floor
-death_limit = 5
+death_limit = 3
 
 num_iterations = 3
 
@@ -44,7 +45,7 @@ def generate_cave(map_obj):
     # ref_map is the map that all the checking is done on,
     # grown_map is the map that is written to.
     map_obj.ref_map = [[cell_init() for y in range(map_obj.height)] for x in range(map_obj.width)]
-    map_obj.grown_map = map_obj.ref_map
+    map_obj.grown_map = copy.deepcopy(map_obj.ref_map)
 
     for iteration in range(num_iterations):
         process_cell_cycle(map_obj)
@@ -73,7 +74,7 @@ def cell_init():
 # This function returns the cell's new status: True if it ends alive, False if it ends dead.
 def cell_process(map_obj, x, y):
     neighbors = cell_get_neighbors(map_obj, x, y)
-    print str(neighbors) + " = " + str(x) + ", " + str(y)
+    #print str(neighbors) + " = " + str(x) + ", " + str(y)
     cell_alive = map_obj.ref_map[x][y]
 
     # Cell starts alive
@@ -92,7 +93,7 @@ def cell_process(map_obj, x, y):
         #     return True
 
     # Cell starts dead (floor)
-    elif not cell_alive:
+    else:
 
         # # birth_limit method
         if neighbors >= birth_limit:
@@ -114,7 +115,9 @@ def cell_get_neighbors(map_obj, x, y):
         for test_y in range(y-1, y+2):
             if test_x < 0 or test_x >= map_obj.width or test_y < 0 or test_y >= map_obj.height:
                 count += 1
-            elif test_x != x and test_y != y:
+            elif test_x == x and test_y == y:
+                continue
+            else:
                 if map_obj.ref_map[test_x][test_y]:
                     count += 1
     return count
@@ -125,7 +128,7 @@ def process_cell_cycle(map_obj):
     for x in range(map_obj.width):
         for y in range(map_obj.height):
             map_obj.grown_map[x][y] = cell_process(map_obj, x, y)
-    map_obj.ref_map = map_obj.grown_map
+    map_obj.ref_map = copy.deepcopy(map_obj.grown_map)
 
 cave_map = Map(75,75)
 generate_cave(cave_map)
