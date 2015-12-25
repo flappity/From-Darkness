@@ -1,11 +1,26 @@
 import libtcodpy as libtcod
+import random
 
-initial_chance = 40
-survival_min = 3
-survival_max = 8
-birth_min = 6
-birth_max = 8
-num_iterations = 1
+initial_chance = .5
+
+# Chance for a wall to remain a wall.
+# If there's between min_to_stay_alive and max_to_stay_alive walls around it, it stays alive. Otherwise it becomes a floor.
+min_to_stay_alive = 5
+max_to_stay_alive = 9
+
+# Chance for a floor to become a wall.
+# If there is between min_to_come_alive and max_to_come_alive walls around it, it turns into a wall.
+min_to_come_alive = 3
+max_to_come_alive = 8
+
+# Alternate method of birth/death rates
+# If a floor has this many walls touching it, it becomes a wall.
+birth_limit = 1
+
+# If a wall doesn't have this many walls touching it, it becomes a floor
+death_limit = 5
+
+num_iterations = 3
 
 class Tile:
     def __init__(self, blocked, block_sight=None):
@@ -24,62 +39,93 @@ class Map:
         self.ref_map = [[False for y in range(height)] for x in range(width)]
         self.grown_map = [[False for y in range(height)] for x in range(width)]
 
-def generate_cave(map):
-    # Fill the tempmap with 'wall' or 'floor'
-    # The number after random_get_float is the probability that a tile is a wall.
-    for x in range(map.width):
-        for y in range(map.height):
-            if libtcod.random_get_int(0,0,100) >= initial_chance:
-                map.grown_map[x][y] = True
-                map.ref_map[x][y] = True
+def generate_cave(map_obj):
+    # First, add two invisible maps to the Map object.
+    # ref_map is the map that all the checking is done on,
+    # grown_map is the map that is written to.
+    map_obj.ref_map = [[cell_init() for y in range(map_obj.height)] for x in range(map_obj.width)]
+    map_obj.grown_map = map_obj.ref_map
 
-    run_iterations(map)
+    for iteration in range(num_iterations):
+        process_cell_cycle(map_obj)
 
-    for x in range(map.width):
-        for y in range(map.height):
-            if not map.grown_map[x][y]:
-                map.array[x][y].blocked = False
-                map.array[x][y].block_sight = False
+    for x in range(map_obj.width):
+        for y in range(map_obj.height):
+            if not map_obj.grown_map[x][y]:
+                map_obj.array[x][y].blocked = False
+                map_obj.array[x][y].block_sight = False
 
-#def cell_grow(ref, grown, x, y, width, height):
-def cell_grow(map, x, y):
-    live_count = 0
-    # Sees if the cells in a 3x3 square are alive or dead. True is alive (wall)
-    # sets live_count to a running total of living adjacent cells.
-    for check_x in range(x-1, x+2):
-        for check_y in range(y-1, y+2):
-            if check_x < 0 or check_x >= map.width or check_y < 0 or check_y >= map.height:
-                live_count += 1
-            elif check_x != x and check_y != y:
-                if map.ref_map[check_x][check_y]:
-                    live_count += 1
-    # If the cell is alive - Does it have the right number of neighbors to stay alive?
-    if map.ref_map[x][y] == True:
-        if live_count < survival_min or live_count > survival_max:
-            map.grown_map[x][y] = False
-        elif live_count >= survival_min and live_count <= survival_max:
-            map.grown_map[x][y] = True
+# Returns true or false based on initial_chance
+def cell_init():
+    if random.random() <= initial_chance:
+        return True
+    else:
+        return False
 
-    # If the cell is dead, does it have the right number of neighbors to come alive?
-    elif map.ref_map[x][y] == False:
-        if live_count >= birth_min and live_count <= birth_max:
-            map.grown_map[x][y] = True
+# Returns True if a cell is born/stays alive, false if it dies/stays dead.
+# Checks starting state of the cell, and its neighbors (3x3 square around the initial cell)
+# If it is alive:
+#   If neighbors is outside the range of min_to_stay_alive to max_to_stay_alive, it dies.
+#   Otherwise it lives.
+# If it is dead:
+#   If neighbors is between min_to_come_alive and max_to_come_alive, it comes to life.
+#   If not, it's deader than dead still.
+# This function returns the cell's new status: True if it ends alive, False if it ends dead.
+def cell_process(map_obj, x, y):
+    neighbors = cell_get_neighbors(map_obj, x, y)
+    print str(neighbors) + " = " + str(x) + ", " + str(y)
+    cell_alive = map_obj.ref_map[x][y]
+
+    # Cell starts alive
+    if cell_alive:
+
+        # # death_limit method
+        if neighbors <= death_limit:
+            return False
         else:
-            map.grown_map[x][y] = False
+            return True
 
-def run_iterations(map):
-    # Run this code block num_iterations times
-    for iter in range(num_iterations):
+        # min_to_stay_alive and max_to_stay_alive method
+        # if neighbors < min_to_stay_alive or neighbors > max_to_stay_alive:
+        #     return False
+        # elif neighbors >= min_to_stay_alive and neighbors <= max_to_stay_alive:
+        #     return True
 
-        # We run cell_grow on each individual cell in order.
-        # This will check the cell on ref[x][y], and put the result on grown[x][y]
-        for x in range(map.width):
-            for y in range(map.height):
-                cell_grow(map, x, y)
+    # Cell starts dead (floor)
+    elif not cell_alive:
 
-        # Now that each cell has been "grown", we copy the grown map over to the ref map.
-        map.ref_map = map.grown_map
+        # # birth_limit method
+        if neighbors >= birth_limit:
+            return True
+        else:
+            return False
 
+        # # min_to_come_alive and max_to_come_alive method
+        # if neighbors >= min_to_come_alive and neighbors <= max_to_come_alive:
+        #     return True
+        # elif neighbors < min_to_come_alive or neighbors > max_to_come_alive:
+        #     return False
+
+# This function counts live cells in a 3x3 area centered on x, y.
+# It checks ref_map, since grown_map is going to be updated with each process_cell_cycle step.
+def cell_get_neighbors(map_obj, x, y):
+    count = 0
+    for test_x in range(x-1, x+2):
+        for test_y in range(y-1, y+2):
+            if test_x < 0 or test_x >= map_obj.width or test_y < 0 or test_y >= map_obj.height:
+                count += 1
+            elif test_x != x and test_y != y:
+                if map_obj.ref_map[test_x][test_y]:
+                    count += 1
+    return count
+
+# This runs cell_process on each cell in the map, starting at 0,0 and ending at map.width, map.height.
+# It writes the new cell states to grown_map, and then copies grown_map over to ref_map in preparation of a new cycle.
+def process_cell_cycle(map_obj):
+    for x in range(map_obj.width):
+        for y in range(map_obj.height):
+            map_obj.grown_map[x][y] = cell_process(map_obj, x, y)
+    map_obj.ref_map = map_obj.grown_map
 
 cave_map = Map(75,75)
 generate_cave(cave_map)
@@ -95,9 +141,9 @@ while not libtcod.console_is_window_closed():
     for x in range(cave_map.width):
         for y in range(cave_map.height):
             if cave_map.array[x][y].blocked:
-                libtcod.console_put_char(0, x, y, '.')
-            elif not cave_map.array[x][y].blocked:
                 libtcod.console_put_char(0, x, y, '#')
+            elif not cave_map.array[x][y].blocked:
+                libtcod.console_put_char(0, x, y, '.')
 
     libtcod.console_flush()
 
